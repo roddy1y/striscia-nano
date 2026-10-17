@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Striscia Nano</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #121416;
+      --card: #1c2126;
+      --line: #2d353c;
+      --text: #f2f4f6;
+      --muted: #9aa4ad;
+      --blue: #0096ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.4 "Avenir Next", "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(460px, calc(100% - 32px));
+      margin: 24px 0;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 24px 22px 20px;
+    }
+    h1 { margin: 0 0 6px; font-size: 22px; font-weight: 650; }
+    h2 { margin: 22px 0 8px; font-size: 14px; font-weight: 650; color: var(--muted); }
+    p { margin: 0; color: var(--muted); }
+    label { display: flex; justify-content: space-between; margin: 14px 0 6px; font-size: 13px; color: var(--muted); }
+    .colors { display: flex; gap: 10px; }
+    .colors div { flex: 1; }
+    .colors span { display: block; margin-top: 6px; font-size: 13px; color: var(--muted); }
+    input[type="color"] {
+      width: 100%;
+      height: 64px;
+      margin-top: 16px;
+      border: 0;
+      border-radius: 12px;
+      background: transparent;
+      cursor: pointer;
+    }
+    input[type="range"] { width: 100%; accent-color: var(--blue); }
+    select, input[type="number"] {
+      width: 100%;
+      margin-top: 4px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: #12171b;
+      color: var(--text);
+      font: inherit;
+    }
+    .actions, .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .actions { margin-top: 14px; }
+    button {
+      flex: 1;
+      min-width: 120px;
+      border: 0;
+      border-radius: 10px;
+      padding: 11px 10px;
+      background: #2a333b;
+      color: var(--text);
+      font: inherit;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.4; cursor: default; }
+    button.primary { background: var(--blue); color: #041018; font-weight: 650; }
+    ul { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow: auto; }
+    li {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    li button { flex: 0; min-width: 0; padding: 6px 10px; }
+    #status { min-height: 1.4em; margin-top: 16px; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Striscia</h1>
+    <p>Colore, luminosità ed effetti. La sequenza salvata resta nel Nano anche se stacchi l’USB.</p>
+
+    <div class="colors">
+      <div>
+        <input id="color" type="color" value="#0096ff" aria-label="Colore 1">
+        <span>Colore 1</span>
+      </div>
+      <div>
+        <input id="color2" type="color" value="#ff6400" aria-label="Colore 2">
+        <span>Colore 2</span>
+      </div>
+    </div>
+
+    <label>Luminosità <span id="briLabel">100%</span></label>
+    <input id="bri" type="range" min="0" max="255" value="255">
+
+    <label for="effect">Effetto</label>
+    <select id="effect">
+      <option value="0">Solido</option>
+      <option value="1">Giro</option>
+      <option value="2">Strobo</option>
+      <option value="3">Respiro</option>
+      <option value="4">Caccia</option>
+      <option value="5">Arcobaleno</option>
+      <option value="6">Diviso</option>
+      <option value="7">Alternato</option>
+      <option value="8">Sfumatura</option>
+      <option value="9">Scambio</option>
+    </select>
+
+    <label>Velocità <span id="spdLabel">63%</span></label>
+    <input id="speed" type="range" min="0" max="255" value="160">
+
+    <label for="dur">Durata dello step (secondi, 0 = resta acceso)</label>
+    <input id="dur" type="number" min="0" max="3600" value="0">
+
+    <div class="row" style="margin-top: 14px">
+      <button id="connect" class="primary" type="button">Collega Nano</button>
+    </div>
+    <div class="actions">
+      <button id="add" type="button">Aggiungi step</button>
+      <button id="play" type="button" disabled>Riproduci</button>
+    </div>
+    <div class="actions">
+      <button id="save" class="primary" type="button" disabled>Salva sequenza</button>
+      <button id="clear" type="button" disabled>Cancella memoria</button>
+    </div>
+
+    <h2>Sequenza</h2>
+    <ul id="steps"></ul>
+    <p id="empty">Nessuno step. Se salvi così, memorizza solo il look attuale.</p>
+    <p id="status">Non collegato. Chiudi il monitor seriale dell’IDE prima di collegarti.</p>
+  </main>
+  <script>
+    const EFFECTS = ["Solido", "Giro", "Strobo", "Respiro", "Caccia", "Arcobaleno", "Diviso", "Alternato", "Sfumatura", "Scambio"];
+    const colorInput = document.querySelector("#color");
+    const color2Input = document.querySelector("#color2");
+    const briInput = document.querySelector("#bri");
+    const briLabel = document.querySelector("#briLabel");
+    const effectInput = document.querySelector("#effect");
+    const speedInput = document.querySelector("#speed");
+    const spdLabel = document.querySelector("#spdLabel");
+    const durInput = document.querySelector("#dur");
+    const connectBtn = document.querySelector("#connect");
+    const addBtn = document.querySelector("#add");
+    const playBtn = document.querySelector("#play");
+    const saveBtn = document.querySelector("#save");
+    const clearBtn = document.querySelector("#clear");
+    const stepsEl = document.querySelector("#steps");
+    const emptyEl = document.querySelector("#empty");
+    const statusEl = document.querySelector("#status");
+
+    let port = null;
+    let writer = null;
+    let reader = null;
+    const encoder = new TextEncoder();
+    let steps = [];
+    let queue = Promise.resolve();
+    let waiters = [];
+    let liveDirty = false;
+    let liveRunning = false;
+
+    function percent(value) {
+      return Math.round((Number(value) / 255) * 100) + "%";
+    }
+
+    function updateLabels() {
+      briLabel.textContent = percent(briInput.value);
+      spdLabel.textContent = percent(speedInput.value);
+    }
+
+    function hexRgb(input) {
+      const hex = input.value.slice(1);
+      return [
+        parseInt(hex.slice(0, 2), 16),
+        parseInt(hex.slice(2, 4), 16),
+        parseInt(hex.slice(4, 6), 16)
+      ];
+    }
+
+    function currentLook(dur) {
+      const [r, g, b] = hexRgb(colorInput);
+      const [r2, g2, b2] = hexRgb(color2Input);
+      return {
+        effect: Number(effectInput.value),
+        r, g, b, r2, g2, b2,
+        bri: Number(briInput.value),
+        speed: Number(speedInput.value),
+        dur: dur
+      };
+    }
+
+    function formatLook(look, withDur) {
+      const base = `${look.effect} ${look.r} ${look.g} ${look.b} ${look.r2} ${look.g2} ${look.b2} ${look.bri} ${look.speed}`;
+      return withDur ? `${base} ${look.dur}` : base;
+    }
+
+    function renderSteps() {
+      stepsEl.replaceChildren();
+      emptyEl.hidden = steps.length > 0;
+      steps.forEach((step, index) => {
+        const li = document.createElement("li");
+        const text = document.createElement("span");
+        const held = step.dur === 0 ? "resta" : step.dur + " s";
+        text.textContent = `${index + 1}. ${EFFECTS[step.effect]} · ${held} · ${percent(step.bri)}`;
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "Togli";
+        remove.addEventListener("click", () => {
+          steps.splice(index, 1);
+          renderSteps();
+          statusEl.textContent = "Step tolto. Salva sequenza per aggiornare la memoria del Nano.";
+        });
+        li.append(text, remove);
+        stepsEl.append(li);
+      });
+    }
+
+    function handleLine(line) {
+      if (line.startsWith("B ")) {
+        steps = [];
+        return;
+      }
+      if (line.startsWith("T ")) {
+        const n = line.slice(2).trim().split(/\s+/).map(Number);
+        steps.push({
+          effect: n[0],
+          r: n[1], g: n[2], b: n[3],
+          r2: n[4], g2: n[5], b2: n[6],
+          bri: n[7], speed: n[8], dur: n[9] || 0
+        });
+        return;
+      }
+      if (line === "OK" || line === "END") {
+        if (line === "END") renderSteps();
+        const waiter = waiters.shift();
+        if (waiter) waiter(line);
+      }
+    }
+
+    async function readLoop() {
+      reader = port.readable.getReader();
+      const decoder = new TextDecoder();
+      let text = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+        let nl;
+        while ((nl = text.indexOf("\n")) >= 0) {
+          handleLine(text.slice(0, nl).replace(/\r/g, ""));
+          text = text.slice(nl + 1);
+        }
+      }
+    }
+
+    function waitAck() {
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          waiters = waiters.filter((item) => item !== finish);
+          reject(new Error("timeout"));
+        }, 2500);
+        function finish() {
+          clearTimeout(timer);
+          resolve();
+        }
+        waiters.push(finish);
+      });
+    }
+
+    function enqueue(task) {
+      const run = queue.then(task, task);
+      queue = run.then(() => {}, () => {});
+      return run;
+    }
+
+    async function sendRaw(line) {
+      const ack = waitAck();
+      await writer.write(encoder.encode(line + "\n"));
+      await ack;
+    }
+
+    function scheduleLive() {
+      if (!writer) return;
+      liveDirty = true;
+      if (liveRunning) return;
+      liveRunning = true;
+      enqueue(async () => {
+        try {
+          while (liveDirty) {
+            liveDirty = false;
+            await sendRaw("L " + formatLook(currentLook(0), false));
+          }
+          statusEl.textContent = "Look inviato. Non è ancora salvato: usa Salva sequenza.";
+        } catch (error) {
+          statusEl.textContent = "Il Nano non risponde. Ricarica lo sketch e ricollega.";
+        } finally {
+          liveRunning = false;
+          if (liveDirty) scheduleLive();
+        }
+      });
+    }
+
+    connectBtn.addEventListener("click", async () => {
+      if (!("serial" in navigator)) {
+        statusEl.textContent = "Serve Chrome o Edge. Safari non apre la porta seriale.";
+        return;
+      }
+      try {
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 115200 });
+        writer = port.writable.getWriter();
+        readLoop();
+        connectBtn.disabled = true;
+        connectBtn.textContent = "Collegato";
+        playBtn.disabled = false;
+        saveBtn.disabled = false;
+        clearBtn.disabled = false;
+        statusEl.textContent = "Collegato. Aspetto che il Nano finisca di riavviarsi…";
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        await enqueue(() => sendRaw("D"));
+        statusEl.textContent = steps.length
+          ? "Sequenza letta dalla memoria del Nano."
+          : "Nessuna sequenza salvata. Il Nano fa il giro rosso e poi il blu.";
+      } catch (error) {
+        statusEl.textContent = "Connessione annullata, porta occupata, oppure il Nano non risponde.";
+      }
+    });
+
+    [colorInput, color2Input, briInput, effectInput, speedInput].forEach((input) => {
+      input.addEventListener("input", () => {
+        updateLabels();
+        scheduleLive();
+      });
+    });
+
+    addBtn.addEventListener("click", () => {
+      steps.push(currentLook(Math.max(0, Number(durInput.value) || 0)));
+      renderSteps();
+      statusEl.textContent = "Step aggiunto. Salva sequenza per tenerlo anche da spento.";
+    });
+
+    playBtn.addEventListener("click", () => {
+      enqueue(async () => {
+        await sendRaw("P");
+        statusEl.textContent = "Sequenza in riproduzione.";
+      }).catch(() => {
+        statusEl.textContent = "Il Nano non risponde.";
+      });
+    });
+
+    saveBtn.addEventListener("click", () => {
+      const toSave = steps.length ? steps.slice() : [currentLook(0)];
+      enqueue(async () => {
+        await sendRaw("N");
+        for (const step of toSave) await sendRaw("T " + formatLook(step, true));
+        await sendRaw("S");
+        steps = toSave;
+        renderSteps();
+        statusEl.textContent = "Salvato nella memoria del Nano. Resta anche se stacchi l’USB.";
+      }).catch(() => {
+        statusEl.textContent = "Salvataggio non riuscito. Ricollega il Nano.";
+      });
+    });
+
+    clearBtn.addEventListener("click", () => {
+      enqueue(async () => {
+        await sendRaw("C");
+        steps = [];
+        renderSteps();
+        statusEl.textContent = "Memoria cancellata.";
+      }).catch(() => {
+        statusEl.textContent = "Il Nano non risponde.";
+      });
+    });
+
+    updateLabels();
+    renderSteps();
+  </script>
+</body>
+</html>
